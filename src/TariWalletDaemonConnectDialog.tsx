@@ -6,7 +6,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import IconButton from "@mui/material/IconButton";
 import Typography from "@mui/material/Typography";
 import { QRCodeSVG } from "qrcode.react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import styles from "./TariWalletDaemonConnectDialog.module.css";
 import { WalletDaemonTariProvider, TariPermissions, WalletDaemonParameters } from "@tari-project/tarijs";
 
@@ -19,49 +19,69 @@ export interface TariWalletDaemonConnectDialog {
   optionalPermissions: TariPermissions;
 }
 
-// TODO: hack, onConnection should ideally return the provider once it has connected
-const providerHack = { provider: null as any };
-
 export function TariWalletDaemonConnectDialog(props: TariWalletDaemonConnectDialog) {
   const { onClose, open, onConnected } = props;
 
   const [isCopied, setIsCopied] = useState(false);
   const [, setFadeClass] = useState("tariFadeIn");
   const [tokenUrl, setTokenUrl] = useState("");
-
-  const onConnection = () => {
-    onConnected(providerHack.provider);
-    handleClose();
-  };
+  const providerRef = useRef<WalletDaemonTariProvider | null>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     if (open) {
       setFadeClass("tariFadeIn");
+      setTokenUrl("");
+      setIsCopied(false);
+      providerRef.current = null;
       const params: WalletDaemonParameters = {
         signalingServerUrl: props.signalingServerUrl,
         permissions: props.permissions,
         optionalPermissions: props.optionalPermissions,
-        onConnection,
+        onConnection: () => {
+          if (!cancelled && providerRef.current) {
+            onConnected(providerRef.current);
+            handleClose();
+          }
+        },
       };
       WalletDaemonTariProvider.build(params).then((provider) => {
+        if (cancelled) {
+          return;
+        }
+        providerRef.current = provider;
         if (provider.tokenUrl) {
           setTokenUrl(provider.tokenUrl);
         }
-        providerHack.provider = provider;
       });
     }
-  }, [open]);
+    return () => {
+      cancelled = true;
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+        copyTimeoutRef.current = null;
+      }
+    };
+  }, [open, props.signalingServerUrl, props.permissions, props.optionalPermissions]);
 
   const handleClose = () => {
     onClose();
   };
 
   const handleCopy = () => {
+    if (!tokenUrl) {
+      return;
+    }
     navigator.clipboard.writeText(tokenUrl);
     setIsCopied(true);
     setFadeClass("");
-    setTimeout(() => {
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current);
+    }
+    copyTimeoutRef.current = setTimeout(() => {
       setIsCopied(false);
+      copyTimeoutRef.current = null;
     }, 2000);
   };
 

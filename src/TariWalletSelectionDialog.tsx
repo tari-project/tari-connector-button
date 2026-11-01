@@ -155,7 +155,7 @@ function WalletConnectionMethodCard({ img, text, callback }: any) {
       variant="outlined"
       elevation={0}
       sx={{
-        mty: 4,
+        mt: 4,
         padding: 4,
         borderRadius: 4,
         width: "175px",
